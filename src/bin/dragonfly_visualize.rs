@@ -1,6 +1,8 @@
 use clap::Parser;
 use std::path::PathBuf;
-use std::process::Command;
+use std::fs;
+
+use clos_dragonfly_simulation_rust::viz;
 
 #[derive(Parser)]
 #[command(name = "dragonfly-visualize")]
@@ -19,34 +21,26 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    let data = fs::read_to_string(&args.input).expect("failed to read JSON");
+    let links: Vec<[u32; 3]> = serde_json::from_str(&data).expect("invalid topology JSON");
+
     let out = args.output.unwrap_or_else(|| {
         let mut p = args.input.clone();
         p.set_extension("png");
         p
     });
 
-    // Reverted to Python for best quality (identical to original matplotlib)
-    let python_proj = "../clos-dragonfly-simulation";
-    let status = Command::new("bash")
-        .arg("-c")
-        .arg(format!(
-            "cd {} && uv run dragonfly-visualize {} --output {}",
-            python_proj,
-            args.input.display(),
-            out.display()
-        ))
-        .status();
-
-    match status {
-        Ok(s) if s.success() => {
-            println!("Diagram written to: {}", out.display());
-        }
-        _ => {
-            eprintln!(
-                "Failed to run Python visualize. Run manually: cd {} && uv run dragonfly-visualize {} --output {}",
-                python_proj, args.input.display(), out.display()
-            );
-            std::process::exit(1);
-        }
+    if let Err(e) = viz::visualize_dragonfly(
+        &links,
+        &out,
+        &format!("Dragonfly {}", args.input.display()),
+        args.num_hosts,
+        args.a,
+        args.g,
+    ) {
+        eprintln!("Visualization error: {}", e);
+        std::process::exit(1);
     }
+
+    println!("Diagram written to: {}", out.display());
 }

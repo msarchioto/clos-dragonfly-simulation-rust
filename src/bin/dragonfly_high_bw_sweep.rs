@@ -1,6 +1,6 @@
 use clap::Parser;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 use clos_dragonfly_simulation_rust::dragonfly_high_bw as hbw;
 
@@ -34,13 +34,29 @@ fn main() {
             skipped.push(n);
             continue;
         }
-        match hbw::generate(args.switch_throughput, args.nic_throughput, args.link_bandwidth, n, args.router_budget_factor) {
+        match hbw::generate(
+            args.switch_throughput,
+            args.nic_throughput,
+            args.link_bandwidth,
+            n,
+            args.router_budget_factor,
+        ) {
             Ok(topo) => {
                 let _ = fs::create_dir_all(&args.output_dir);
                 let _ = topo.write_json(&out);
                 let png = out.with_extension("png");
-                let _ = clos_dragonfly_simulation_rust::viz::visualize_dragonfly(&topo.to_json(), &png, &format!("High-BW {}", out.display()), topo.num_hosts, topo.routers_per_group, topo.num_groups);
-                println!("[OK] hosts={} -> {} + {}", n, out.display(), png.display());
+                if let Err(e) = clos_dragonfly_simulation_rust::viz::visualize_dragonfly(
+                    &topo.to_json(),
+                    &png,
+                    &format!("Dragonfly High-BW Topology ({})", out.display()),
+                    topo.num_hosts,
+                    topo.routers_per_group,
+                    topo.num_groups,
+                ) {
+                    println!("[OK] hosts={} -> {} (diagram warning: {})", n, out.display(), e);
+                } else {
+                    println!("[OK] hosts={} -> {} + {}", n, out.display(), png.display());
+                }
                 println!("{}", topo.summary());
                 println!();
                 generated.push(n);
@@ -52,7 +68,28 @@ fn main() {
         }
     }
     println!("--- Sweep Summary ---");
-    println!("Generated: {}", if generated.is_empty() { "none".to_string() } else { format!("{:?}", generated) });
-    println!("Skipped:   {}", if skipped.is_empty() { "none".to_string() } else { format!("{:?}", skipped) });
-    println!("Failed:    {}", if failed.is_empty() { "none".to_string() } else { format!("{:?}", failed) });
+    println!(
+        "Generated: {}",
+        if generated.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{:?}", generated)
+        }
+    );
+    println!(
+        "Skipped:   {}",
+        if skipped.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{:?}", skipped)
+        }
+    );
+    println!(
+        "Failed:    {}",
+        if failed.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{:?}", failed)
+        }
+    );
 }

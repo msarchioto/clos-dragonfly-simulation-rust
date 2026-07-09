@@ -58,16 +58,25 @@ impl ClosTopology {
              Total switches: {}\n\
              Total links:    {}",
             self.num_hosts,
-            h0, h1,
-            self.links_per_host, self.link_bandwidth, self.links_per_host * self.link_bandwidth,
+            h0,
+            h1,
+            self.links_per_host,
+            self.link_bandwidth,
+            self.links_per_host * self.link_bandwidth,
             self.num_leafs,
-            l0, l1,
-            self.leaf_south_ports_used, half,
-            self.leaf_north_ports_used, half,
-            self.leaf_south_ports_used + self.leaf_north_ports_used, self.ports_per_switch,
+            l0,
+            l1,
+            self.leaf_south_ports_used,
+            half,
+            self.leaf_north_ports_used,
+            half,
+            self.leaf_south_ports_used + self.leaf_north_ports_used,
+            self.ports_per_switch,
             self.num_spines,
-            s0, s1,
-            self.spine_ports_used, self.ports_per_switch,
+            s0,
+            s1,
+            self.spine_ports_used,
+            self.ports_per_switch,
             self.total_switches(),
             self.links.len()
         )
@@ -164,13 +173,13 @@ fn validate_inputs(
     if switch_throughput == 0 || nic_throughput == 0 || link_bandwidth == 0 || num_hosts == 0 {
         return Err("All throughput/bandwidth values and num_hosts must be positive".to_string());
     }
-    if switch_throughput % link_bandwidth != 0 {
+    if !switch_throughput.is_multiple_of(link_bandwidth) {
         return Err(format!(
             "switch_throughput ({}) must be divisible by link_bandwidth ({})",
             switch_throughput, link_bandwidth
         ));
     }
-    if nic_throughput % link_bandwidth != 0 {
+    if !nic_throughput.is_multiple_of(link_bandwidth) {
         return Err(format!(
             "nic_throughput ({}) must be divisible by link_bandwidth ({})",
             nic_throughput, link_bandwidth
@@ -178,7 +187,7 @@ fn validate_inputs(
     }
 
     let ports_per_switch = switch_throughput / link_bandwidth;
-    if ports_per_switch % 2 != 0 {
+    if !ports_per_switch.is_multiple_of(2) {
         return Err(format!(
             "ports_per_switch ({}) must be even for non-oversubscribed leaf-spine split",
             ports_per_switch
@@ -187,7 +196,7 @@ fn validate_inputs(
 
     let links_per_host = nic_throughput / link_bandwidth;
     let half_ports = ports_per_switch / 2;
-    if half_ports % links_per_host != 0 {
+    if !half_ports.is_multiple_of(links_per_host) {
         return Err(format!(
             "Half the switch ports ({}) must be divisible by links_per_host ({})",
             half_ports, links_per_host
@@ -195,7 +204,7 @@ fn validate_inputs(
     }
 
     let hosts_per_leaf = half_ports / links_per_host;
-    if num_hosts % hosts_per_leaf != 0 {
+    if !num_hosts.is_multiple_of(hosts_per_leaf) {
         return Err(format!(
             "num_hosts ({}) must be divisible by hosts_per_leaf ({})",
             num_hosts, hosts_per_leaf
@@ -218,10 +227,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_clos_basic() {
+    fn test_clos_basic_128() {
         let topo = generate(6400, 800, 200, 128).unwrap();
         assert_eq!(topo.num_hosts, 128);
         assert_eq!(topo.total_switches(), 48);
         assert_eq!(topo.links.len(), 640);
+        assert_eq!(topo.num_leafs, 32);
+        assert_eq!(topo.num_spines, 16);
+        let (h0, h1) = topo.host_id_range();
+        assert_eq!((h0, h1), (0, 127));
+    }
+
+    #[test]
+    fn test_clos_small_cases() {
+        for &n in &[4, 8, 16, 32, 64] {
+            let topo = generate(6400, 800, 200, n).expect(&format!("failed for {} hosts", n));
+            assert_eq!(topo.num_hosts, n);
+            assert!(topo.links.len() > 0);
+            assert!(topo.num_leafs > 0);
+            assert!(topo.num_spines > 0);
+        }
+    }
+
+    #[test]
+    fn test_clos_validation_errors() {
+        assert!(generate(6400, 800, 200, 0).is_err());
+        assert!(generate(6400, 800, 199, 64).is_err()); // not divisible
+        assert!(generate(6401, 800, 200, 64).is_err()); // not divisible
+    }
+
+    #[test]
+    fn test_write_json() {
+        use tempfile::tempdir;
+        let topo = generate(6400, 800, 200, 8).unwrap();
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.json");
+        topo.write_json(&path).unwrap();
+        assert!(path.exists());
+        let content = std::fs::read_to_string(&path).unwrap();
+        // Pretty-printed JSON starts with [
+        assert!(content.trim_start().starts_with('['));
+        assert!(content.contains("0"));
     }
 }

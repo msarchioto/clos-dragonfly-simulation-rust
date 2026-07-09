@@ -1,6 +1,6 @@
 use clap::Parser;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 use clos_dragonfly_simulation_rust::clos;
 
@@ -31,11 +31,25 @@ fn main() {
             skipped.push(n);
             continue;
         }
-        match clos::generate(args.switch_throughput, args.nic_throughput, args.link_bandwidth, n) {
+        match clos::generate(
+            args.switch_throughput,
+            args.nic_throughput,
+            args.link_bandwidth,
+            n,
+        ) {
             Ok(topo) => {
                 let _ = fs::create_dir_all(&args.output_dir);
                 let _ = topo.write_json(&out);
-                println!("[OK] hosts={} -> {}", n, out.display());
+                let png = out.with_extension("png");
+                if let Err(e) = clos_dragonfly_simulation_rust::viz::visualize_clos(
+                    &topo.to_json(),
+                    &png,
+                    &format!("2-Layer CLOS Topology ({})", out.display()),
+                ) {
+                    println!("[OK] hosts={} -> {} (diagram warning: {})", n, out.display(), e);
+                } else {
+                    println!("[OK] hosts={} -> {} + {}", n, out.display(), png.display());
+                }
                 println!("{}", topo.summary());
                 println!();
                 generated.push(n);
@@ -47,7 +61,28 @@ fn main() {
         }
     }
     println!("--- Sweep Summary ---");
-    println!("Generated: {}", if generated.is_empty() { "none".to_string() } else { format!("{:?}", generated) });
-    println!("Skipped:   {}", if skipped.is_empty() { "none".to_string() } else { format!("{:?}", skipped) });
-    println!("Failed:    {}", if failed.is_empty() { "none".to_string() } else { format!("{:?}", failed) });
+    println!(
+        "Generated: {}",
+        if generated.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{:?}", generated)
+        }
+    );
+    println!(
+        "Skipped:   {}",
+        if skipped.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{:?}", skipped)
+        }
+    );
+    println!(
+        "Failed:    {}",
+        if failed.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{:?}", failed)
+        }
+    );
 }

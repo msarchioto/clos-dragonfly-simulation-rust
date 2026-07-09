@@ -5,11 +5,11 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize)]
 pub struct DragonflyTopology {
     pub num_hosts: u32,
-    pub routers_per_group: u32,      // a
-    pub num_groups: u32,             // g
-    pub hosts_per_router: u32,       // p
+    pub routers_per_group: u32,       // a
+    pub num_groups: u32,              // g
+    pub hosts_per_router: u32,        // p
     pub global_links_per_router: u32, // h
-    pub ports_per_switch: u32,       // k
+    pub ports_per_switch: u32,        // k
     pub links_per_host: u32,
     pub link_bandwidth: u32,
     pub links: Vec<[u32; 3]>,
@@ -64,15 +64,27 @@ impl DragonflyTopology {
              \x20\x20Intra-group links:{} per group\n\
              Total links:        {}",
             self.num_hosts,
-            h0, h1,
-            self.links_per_host, self.link_bandwidth, host_bw,
-            self.total_routers(), a, g,
-            r0, r1,
-            terminal_ports, p, self.links_per_host,
-            local_ports, a-1,
+            h0,
+            h1,
+            self.links_per_host,
+            self.link_bandwidth,
+            host_bw,
+            self.total_routers(),
+            a,
+            g,
+            r0,
+            r1,
+            terminal_ports,
+            p,
+            self.links_per_host,
+            local_ports,
+            a - 1,
             h,
-            self.router_ports_used(), self.ports_per_switch,
-            g, a, a * p,
+            self.router_ports_used(),
+            self.ports_per_switch,
+            g,
+            a,
+            a * p,
             a * (a - 1) / 2,
             self.links.len()
         )
@@ -175,11 +187,15 @@ fn validate_inputs(s: u32, n: u32, l: u32, h: u32) -> Result<(), String> {
     if s == 0 || n == 0 || l == 0 || h == 0 {
         return Err("All values must be positive".to_string());
     }
-    if s % l != 0 {
-        return Err(format!("switch_throughput must be divisible by link_bandwidth"));
+    if !s.is_multiple_of(l) {
+        return Err(format!(
+            "switch_throughput must be divisible by link_bandwidth"
+        ));
     }
-    if n % l != 0 {
-        return Err(format!("nic_throughput must be divisible by link_bandwidth"));
+    if !n.is_multiple_of(l) {
+        return Err(format!(
+            "nic_throughput must be divisible by link_bandwidth"
+        ));
     }
     Ok(())
 }
@@ -196,7 +212,7 @@ fn find_best_config(k: u32, lph: u32, num_hosts: u32) -> (u32, u32, u32, u32) {
             if remaining <= 0 {
                 break;
             }
-            if remaining % lph != 0 {
+            if !remaining.is_multiple_of(lph) {
                 continue;
             }
             let p = remaining / lph;
@@ -206,6 +222,7 @@ fn find_best_config(k: u32, lph: u32, num_hosts: u32) -> (u32, u32, u32, u32) {
             let g_max = a * h + 1;
             for g in 2..=g_max {
                 if (a * g * h) % 2 != 0 {
+                    // keep, small literal
                     continue;
                 }
                 let capacity = p * a * g;
@@ -213,7 +230,8 @@ fn find_best_config(k: u32, lph: u32, num_hosts: u32) -> (u32, u32, u32, u32) {
                     continue;
                 }
                 let total_r = a * g;
-                let imbalance = (a as i32 - 2 * h as i32).unsigned_abs() + (a as i32 - 2 * p as i32 * lph as i32).unsigned_abs();
+                let imbalance = (a as i32 - 2 * h as i32).unsigned_abs()
+                    + (a as i32 - 2 * p as i32 * lph as i32).unsigned_abs();
                 let slack = capacity - num_hosts;
 
                 let mut update = false;
@@ -249,19 +267,31 @@ fn wire_global_links(a: u32, g: u32, h: u32) -> Vec<(u32, u32)> {
     let mut counts: std::collections::HashMap<(u32, u32), u32> = std::collections::HashMap::new();
 
     while rem.iter().sum::<u32>() > 0 {
-        let g1 = rem.iter().enumerate().max_by_key(|(_, &v)| v).map(|(i,_)| i as u32).unwrap();
-        if rem[g1 as usize] == 0 { break; }
+        let g1 = rem
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &v)| v)
+            .map(|(i, _)| i as u32)
+            .unwrap();
+        if rem[g1 as usize] == 0 {
+            break;
+        }
 
-        let mut candidates: Vec<u32> = (0..g).filter(|&gi| gi != g1 && rem[gi as usize] > 0).collect();
+        let candidates: Vec<u32> = (0..g)
+            .filter(|&gi| gi != g1 && rem[gi as usize] > 0)
+            .collect();
         if candidates.is_empty() {
             panic!("Unable to realize global links");
         }
 
-        let g2 = *candidates.iter().min_by_key(|&&gi| {
-            let pk = if g1 < gi { (g1, gi) } else { (gi, g1) };
-            let score = counts.get(&pk).copied().unwrap_or(0);
-            (score, std::cmp::Reverse(rem[gi as usize]), gi)
-        }).unwrap();
+        let g2 = *candidates
+            .iter()
+            .min_by_key(|&&gi| {
+                let pk = if g1 < gi { (g1, gi) } else { (gi, g1) };
+                let score = counts.get(&pk).copied().unwrap_or(0);
+                (score, std::cmp::Reverse(rem[gi as usize]), gi)
+            })
+            .unwrap();
 
         let pk = if g1 < g2 { (g1, g2) } else { (g2, g1) };
         *counts.entry(pk).or_insert(0) += 1;
@@ -283,8 +313,12 @@ fn wire_global_links(a: u32, g: u32, h: u32) -> Vec<(u32, u32)> {
         let mult = counts[&pk];
         let (g1, g2) = pk;
         for _ in 0..mult {
-            let best_r1 = (0..a).min_by_key(|&r| r_ports[(g1*a + r) as usize]).unwrap();
-            let best_r2 = (0..a).min_by_key(|&r| r_ports[(g2*a + r) as usize]).unwrap();
+            let best_r1 = (0..a)
+                .min_by_key(|&r| r_ports[(g1 * a + r) as usize])
+                .unwrap();
+            let best_r2 = (0..a)
+                .min_by_key(|&r| r_ports[(g2 * a + r) as usize])
+                .unwrap();
             let src = g1 * a + best_r1;
             let dst = g2 * a + best_r2;
 
@@ -301,4 +335,35 @@ fn wire_global_links(a: u32, g: u32, h: u32) -> Vec<(u32, u32)> {
         panic!("h ports not satisfied");
     }
     links
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dragonfly_basic_64() {
+        let topo = generate(6400, 800, 200, 64).unwrap();
+        assert_eq!(topo.num_hosts, 64);
+        assert_eq!(topo.total_routers(), 10);
+        assert_eq!(topo.links.len(), 84);
+        assert_eq!(topo.routers_per_group, 2);
+        assert_eq!(topo.num_groups, 5);
+    }
+
+    #[test]
+    fn test_dragonfly_small_cases() {
+        for &n in &[4, 8, 16, 32, 64] {
+            let topo = generate(6400, 800, 200, n).expect(&format!("failed for {} hosts", n));
+            assert_eq!(topo.num_hosts, n);
+            assert!(topo.links.len() > 0);
+            assert!(topo.total_routers() > 0);
+        }
+    }
+
+    #[test]
+    fn test_dragonfly_validation() {
+        assert!(generate(6400, 800, 200, 0).is_err());
+        assert!(generate(6400, 800, 199, 64).is_err());
+    }
 }

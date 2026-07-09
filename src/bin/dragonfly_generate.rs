@@ -29,7 +29,10 @@ fn main() {
     ) {
         Ok(topo) => {
             let output_path = args.output.unwrap_or_else(|| {
-                PathBuf::from(format!("output_dragonfly/dragonfly_{}.json", args.num_hosts))
+                PathBuf::from(format!(
+                    "output_dragonfly/dragonfly_{}.json",
+                    args.num_hosts
+                ))
             });
 
             if let Err(e) = topo.write_json(&output_path) {
@@ -40,8 +43,17 @@ fn main() {
             println!("{}", topo.summary());
             println!("\nTopology written to: {}", output_path.display());
             let png = output_path.with_extension("png");
-            println!("For high-quality diagram (using Python matplotlib):");
-            println!("  cd ../clos-dragonfly-simulation && uv run dragonfly-visualize {} --output {}", output_path.display(), png.display());
+            let _ = clos_dragonfly_simulation_rust::viz::visualize_dragonfly(
+                &topo.to_json(),
+                &png,
+                &format!("Dragonfly Topology ({})", output_path.display()),
+                topo.num_hosts,
+                topo.routers_per_group,
+                topo.num_groups,
+            );
+            if png.exists() {
+                println!("Diagram written to: {}", png.display());
+            }
         }
         Err(e) => {
             eprintln!("ERROR: {}", e);

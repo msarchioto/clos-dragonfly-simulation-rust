@@ -5,11 +5,11 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize)]
 pub struct DragonflyTopology {
     pub num_hosts: u32,
-    pub routers_per_group: u32,      // a
-    pub num_groups: u32,             // g
-    pub hosts_per_router: u32,       // p
+    pub routers_per_group: u32,       // a
+    pub num_groups: u32,              // g
+    pub hosts_per_router: u32,        // p
     pub global_links_per_router: u32, // h
-    pub ports_per_switch: u32,       // k
+    pub ports_per_switch: u32,        // k
     pub links_per_host: u32,
     pub link_bandwidth: u32,
     pub links: Vec<[u32; 3]>,
@@ -64,15 +64,27 @@ impl DragonflyTopology {
              \x20\x20Intra-group links:{} per group\n\
              Total links:        {}",
             self.num_hosts,
-            h0, h1,
-            self.links_per_host, self.link_bandwidth, host_bw,
-            self.total_routers(), a, g,
-            r0, r1,
-            terminal_ports, p, self.links_per_host,
-            local_ports, a-1,
+            h0,
+            h1,
+            self.links_per_host,
+            self.link_bandwidth,
+            host_bw,
+            self.total_routers(),
+            a,
+            g,
+            r0,
+            r1,
+            terminal_ports,
+            p,
+            self.links_per_host,
+            local_ports,
+            a - 1,
             h,
-            self.router_ports_used(), self.ports_per_switch,
-            g, a, a * p,
+            self.router_ports_used(),
+            self.ports_per_switch,
+            g,
+            a,
+            a * p,
             a * (a - 1) / 2,
             self.links.len()
         )
@@ -175,10 +187,10 @@ fn validate_inputs(s: u32, n: u32, l: u32, h: u32) -> Result<(), String> {
     if s == 0 || n == 0 || l == 0 || h == 0 {
         return Err("All values must be positive".to_string());
     }
-    if s % l != 0 {
+    if !s.is_multiple_of(l) {
         return Err("switch_throughput must be divisible by link_bandwidth".to_string());
     }
-    if n % l != 0 {
+    if !n.is_multiple_of(l) {
         return Err("nic_throughput must be divisible by link_bandwidth".to_string());
     }
     Ok(())
@@ -190,15 +202,26 @@ fn find_best_config(k: u32, lph: u32, num_hosts: u32, factor: f64) -> (u32, u32,
     for h in 1..k {
         for a in 2..k {
             let remaining = k - (a - 1) - h;
-            if remaining <= 0 { break; }
-            if remaining % lph != 0 { continue; }
+            if remaining <= 0 {
+                break;
+            }
+            if !remaining.is_multiple_of(lph) {
+                continue;
+            }
             let p = remaining / lph;
-            if p < 1 { continue; }
+            if p < 1 {
+                continue;
+            }
             let g_max = a * h + 1;
             for g in 2..=g_max {
-                if (a * g * h) % 2 != 0 { continue; }
+                if (a * g * h) % 2 != 0 {
+                    // keep for literal
+                    continue;
+                }
                 let capacity = p * a * g;
-                if capacity < num_hosts { continue; }
+                if capacity < num_hosts {
+                    continue;
+                }
                 configs.push((a, h, p, g));
             }
         }
@@ -207,16 +230,18 @@ fn find_best_config(k: u32, lph: u32, num_hosts: u32, factor: f64) -> (u32, u32,
         panic!("No valid High-BW Dragonfly config for {} hosts", num_hosts);
     }
 
-    let _min_routers = configs.iter().map(|&(_,_,_,g)| g).min().unwrap();  // wait, a*g
-    let min_routers = configs.iter().map(|&(a,_,_,g)| a * g).min().unwrap();
+    let _min_routers = configs.iter().map(|&(_, _, _, g)| g).min().unwrap(); // wait, a*g
+    let min_routers = configs.iter().map(|&(a, _, _, g)| a * g).min().unwrap();
     let cap = ((min_routers as f64 * factor).ceil()) as u32;
 
-    let mut best = (0u32,0u32,0u32,0u32);
+    let mut best = (0u32, 0u32, 0u32, 0u32);
     let mut best_key = (u32::MAX, u32::MAX, u32::MAX, u32::MAX);
 
     for &(a, h, p, g) in &configs {
         let total = a * g;
-        if total > cap { continue; }
+        if total > cap {
+            continue;
+        }
         let key = (
             (a as i32 - 2 * h as i32).unsigned_abs(),
             (a as i32 - 2 * (p * lph) as i32).unsigned_abs(),
@@ -239,17 +264,31 @@ fn wire_global_links(a: u32, g: u32, h: u32) -> Vec<(u32, u32)> {
     let mut counts: std::collections::HashMap<(u32, u32), u32> = std::collections::HashMap::new();
 
     while rem.iter().sum::<u32>() > 0 {
-        let g1 = rem.iter().enumerate().max_by_key(|(_, &v)| v).map(|(i,_)| i as u32).unwrap();
-        if rem[g1 as usize] == 0 { break; }
+        let g1 = rem
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &v)| v)
+            .map(|(i, _)| i as u32)
+            .unwrap();
+        if rem[g1 as usize] == 0 {
+            break;
+        }
 
-        let candidates: Vec<u32> = (0..g).filter(|&gi| gi != g1 && rem[gi as usize] > 0).collect();
-        if candidates.is_empty() { panic!("Unable to realize global links"); }
+        let candidates: Vec<u32> = (0..g)
+            .filter(|&gi| gi != g1 && rem[gi as usize] > 0)
+            .collect();
+        if candidates.is_empty() {
+            panic!("Unable to realize global links");
+        }
 
-        let g2 = *candidates.iter().min_by_key(|&&gi| {
-            let pk = if g1 < gi { (g1, gi) } else { (gi, g1) };
-            let score = counts.get(&pk).copied().unwrap_or(0);
-            (score, std::cmp::Reverse(rem[gi as usize]), gi)
-        }).unwrap();
+        let g2 = *candidates
+            .iter()
+            .min_by_key(|&&gi| {
+                let pk = if g1 < gi { (g1, gi) } else { (gi, g1) };
+                let score = counts.get(&pk).copied().unwrap_or(0);
+                (score, std::cmp::Reverse(rem[gi as usize]), gi)
+            })
+            .unwrap();
 
         let pk = if g1 < g2 { (g1, g2) } else { (g2, g1) };
         *counts.entry(pk).or_insert(0) += 1;
@@ -257,7 +296,9 @@ fn wire_global_links(a: u32, g: u32, h: u32) -> Vec<(u32, u32)> {
         rem[g2 as usize] -= 1;
     }
 
-    if rem.iter().any(|&v| v != 0) { panic!("Failed group degree"); }
+    if rem.iter().any(|&v| v != 0) {
+        panic!("Failed group degree");
+    }
 
     let mut r_ports = vec![0u32; total_r as usize];
     let mut links = Vec::new();
@@ -269,17 +310,53 @@ fn wire_global_links(a: u32, g: u32, h: u32) -> Vec<(u32, u32)> {
         let mult = counts[&pk];
         let (g1, g2) = pk;
         for _ in 0..mult {
-            let best_r1 = (0..a).min_by_key(|&r| r_ports[(g1*a + r) as usize]).unwrap();
-            let best_r2 = (0..a).min_by_key(|&r| r_ports[(g2*a + r) as usize]).unwrap();
+            let best_r1 = (0..a)
+                .min_by_key(|&r| r_ports[(g1 * a + r) as usize])
+                .unwrap();
+            let best_r2 = (0..a)
+                .min_by_key(|&r| r_ports[(g2 * a + r) as usize])
+                .unwrap();
             let src = g1 * a + best_r1;
             let dst = g2 * a + best_r2;
-            if r_ports[src as usize] >= h || r_ports[dst as usize] >= h { panic!("budget"); }
+            if r_ports[src as usize] >= h || r_ports[dst as usize] >= h {
+                panic!("budget");
+            }
             links.push((src, dst));
             r_ports[src as usize] += 1;
             r_ports[dst as usize] += 1;
         }
     }
 
-    if r_ports.iter().any(|&v| v != h) { panic!("h not satisfied"); }
+    if r_ports.iter().any(|&v| v != h) {
+        panic!("h not satisfied");
+    }
     links
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_high_bw_basic_64() {
+        let topo = generate(6400, 800, 200, 64, 2.0).unwrap();
+        assert_eq!(topo.num_hosts, 64);
+        assert_eq!(topo.total_routers(), 12);
+        assert_eq!(topo.links.len(), 112);
+        assert_eq!(topo.routers_per_group, 6);
+        assert_eq!(topo.num_groups, 2);
+    }
+
+    #[test]
+    fn test_high_bw_varied_budget() {
+        let topo1 = generate(6400, 800, 200, 64, 2.0).unwrap();
+        let topo2 = generate(6400, 800, 200, 64, 3.0).unwrap();
+        // Higher budget should allow at least as many routers
+        assert!(topo2.total_routers() >= topo1.total_routers());
+    }
+
+    #[test]
+    fn test_high_bw_validation() {
+        assert!(generate(6400, 800, 200, 0, 2.0).is_err());
+    }
 }

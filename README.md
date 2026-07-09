@@ -14,24 +14,57 @@ cargo run --release --bin clos-sweep -- --switch-throughput 6400 --nic-throughpu
 
 ## Visualization
 
-The Rust tools produce the JSON topology files. To generate the high-quality PNG diagrams (layered for CLOS, grouped for Dragonfly, matching the original exactly):
+The Rust tools always produce JSON topology files.
+
+### Default (recommended for quality)
+High-quality PNGs use the sibling Python project (matplotlib):
 
 ```bash
-# After generating a JSON with Rust:
+# After `cargo run --bin clos-generate ...`
 cd ../clos-dragonfly-simulation
-uv run clos-visualize ../clos-dragonfly-simulation-rust/output_clos/topo_128.json --output ../clos-dragonfly-simulation-rust/output_clos/topo_128.png
-
-uv run dragonfly-visualize ../clos-dragonfly-simulation-rust/output_dragonfly/dragonfly_64.json --output ../clos-dragonfly-simulation-rust/output_dragonfly/dragonfly_64.png
+uv run clos-visualize ../clos-dragonfly-simulation-rust/output_clos/topo_128.json \
+  --output ../clos-dragonfly-simulation-rust/output_clos/topo_128.png
 ```
 
-The `*-visualize` Rust binaries also delegate to the Python matplotlib scripts automatically (requires the sibling Python project with `uv`).
+The `*-visualize` binaries do this automatically (they spawn the Python command).
+
+### Optional pure-Rust viz (using plotters)
+
+Build with the `viz` Cargo feature for a **pure-Rust** drawing backend (no Python required at runtime):
+
+```bash
+cargo build --release --features viz
+./target/release/clos-visualize output_clos/topo_32.json --output /tmp/clos.png
+./target/release/dragonfly-visualize output_dragonfly/dragonfly_64.json --output /tmp/df.png
+```
+
+In your own `Cargo.toml`:
+
+```toml
+[dependencies]
+clos-dragonfly-simulation-rust = { version = "0.1", features = ["viz"] }
+```
+
+**Note**: When the `viz` feature is enabled, `generate` and `sweep` commands will also try to emit PNGs using the pure-Rust backend (in addition to JSON).
+
+The pure-Rust drawings use similar layered/circular layouts and colors to the original, but are not yet as polished as matplotlib. Use the Python path for publication-quality images.
+
+### Makefile helpers
+```bash
+make pictures   # always uses Python matplotlib (high quality)
+make refs       # regenerate JSONs
+```
 
 ## Status
 
 - Full CLOS, Dragonfly, and High-BW generators + sweeps (JSON matches Python references for CLOS; correct structure otherwise).
 - All CLIs implemented.
-- Visualization reverts to Python's matplotlib for best quality (identical pictures).
-- Outputs include full set of JSON + PNG for 4/8/16/32/64 (+128 where applicable).
+- Visualization: defaults to Python matplotlib (best quality). Optional pure-Rust backend via `viz` feature (using `plotters`).
+- 10+ unit tests.
+- Proper Makefile (including `pictures` target).
+- See "Visualization" section below for the `viz` feature.
+
+See the Python project for algorithm details and math.
 
 See the Python project for algorithm details and math.
 

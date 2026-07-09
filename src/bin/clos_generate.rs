@@ -53,8 +53,14 @@ fn main() {
             println!("\nTopology written to: {}", output_path.display());
 
             let png_path = output_path.with_extension("png");
-            println!("For high-quality diagram (using Python matplotlib):");
-            println!("  cd ../clos-dragonfly-simulation && uv run clos-visualize {} --output {}", output_path.display(), png_path.display());
+            let _ = clos_dragonfly_simulation_rust::viz::visualize_clos(
+                &topo.to_json(),
+                &png_path,
+                &format!("2-Layer CLOS Topology ({})", output_path.display()),
+            );
+            if png_path.exists() {
+                println!("Diagram written to: {}", png_path.display());
+            }
         }
         Err(e) => {
             eprintln!("ERROR: {}", e);
