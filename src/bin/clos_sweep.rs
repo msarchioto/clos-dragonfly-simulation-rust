@@ -1,0 +1,53 @@
+use clap::Parser;
+use std::path::PathBuf;
+use std::fs;
+
+use clos_dragonfly_simulation_rust::clos;
+
+#[derive(Parser)]
+struct Args {
+    #[arg(long)]
+    switch_throughput: u32,
+    #[arg(long)]
+    nic_throughput: u32,
+    #[arg(long)]
+    link_bandwidth: u32,
+    #[arg(long, default_value = "output_clos")]
+    output_dir: PathBuf,
+    #[arg(long)]
+    force: bool,
+}
+
+fn main() {
+    let args = Args::parse();
+    let hosts = vec![4u32, 8, 16, 32, 64];
+    let mut generated = vec![];
+    let mut skipped = vec![];
+    let mut failed = vec![];
+
+    for &n in &hosts {
+        let out = args.output_dir.join(format!("topo_{}.json", n));
+        if out.exists() && !args.force {
+            skipped.push(n);
+            continue;
+        }
+        match clos::generate(args.switch_throughput, args.nic_throughput, args.link_bandwidth, n) {
+            Ok(topo) => {
+                let _ = fs::create_dir_all(&args.output_dir);
+                let _ = topo.write_json(&out);
+                println!("[OK] hosts={} -> {}", n, out.display());
+                println!("{}", topo.summary());
+                println!();
+                generated.push(n);
+            }
+            Err(e) => {
+                eprintln!("[FAIL] hosts={}: {}", n, e);
+                failed.push(n);
+            }
+        }
+    }
+    println!("--- Sweep Summary ---");
+    println!("Generated: {}", if generated.is_empty() { "none".to_string() } else { format!("{:?}", generated) });
+    println!("Skipped:   {}", if skipped.is_empty() { "none".to_string() } else { format!("{:?}", skipped) });
+    println!("Failed:    {}", if failed.is_empty() { "none".to_string() } else { format!("{:?}", failed) });
+}
