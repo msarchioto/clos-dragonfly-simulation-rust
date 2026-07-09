@@ -4,6 +4,33 @@ Rust port of the CLOS & Dragonfly topology generators.
 
 This mirrors the Python and Go ports. Core logic and CLIs are in pure Rust. For visualization (to get pictures identical to the original Python matplotlib implementation), we delegate to the Python scripts.
 
+## Quick Start (same params as Python version)
+
+```bash
+# CLOS
+cargo run --release --bin clos-generate -- --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200 --num-hosts 128
+cargo run --release --bin clos-sweep -- --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200
+
+# Dragonfly
+cargo run --release --bin dragonfly-generate -- --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200 --num-hosts 128
+cargo run --release --bin dragonfly-sweep -- --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200
+
+# Dragonfly High-BW (better inter-group bandwidth)
+cargo run --release --bin dragonfly-high-bw-generate -- \
+  --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200 \
+  --num-hosts 128 --router-budget-factor 2.0
+
+cargo run --release --bin dragonfly-high-bw-sweep -- \
+  --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200 \
+  --router-budget-factor 2.0
+```
+
+After building with `cargo build --release` you can also run the binaries directly:
+
+```bash
+./target/release/clos-generate --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200 --num-hosts 128
+```
+
 ## Build & Run
 
 ```bash
@@ -65,12 +92,3 @@ make refs       # regenerate JSONs
 - See "Visualization" section below for the `viz` feature.
 
 See the Python project for algorithm details and math.
-
-See the Python project for algorithm details and math.
-
-## Example
-
-```bash
-./target/release/clos-generate --switch-throughput 6400 --nic-throughput 800 --link-bandwidth 200 --num-hosts 128
-# Then generate picture with Python as above.
-```
